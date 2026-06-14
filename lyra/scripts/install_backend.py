@@ -11,8 +11,8 @@ from pathlib import Path
 MODELS_DIR = Path.home() / ".local" / "share" / "lyra" / "models"
 LYRA_VENV = Path.home() / ".local" / "share" / "lyra" / "venv"
 
-MODEL_REPO = "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF"
-MODEL_FILE = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
+MODEL_REPO = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
+MODEL_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
 
 def _get_installer() -> list[str]:

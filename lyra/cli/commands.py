@@ -12,6 +12,8 @@ lyra -q "text"                → query the daemon, print plain-text response
 lyra config list              → print all config keys
 lyra config get <key>
 lyra config set <key> <value>
+lyra profile show             → show current profile
+lyra profile refresh          → regenerate profile
 lyra --version
 """
 
@@ -31,7 +33,7 @@ VERSION = "0.1.0"
 def _serve(daemon: bool) -> None:
     from lyra.cli.daemon import daemonize, start_socket_server
     from lyra.api.dependencies import generation_agent
-    from lyra.main import app, model_ready_event
+    from lyra.main import app, get_model_ready_event
     import uvicorn
     from lyra.config.env_vars import env_vars
 
@@ -49,7 +51,7 @@ def _serve(daemon: bool) -> None:
         server = uvicorn.Server(config)
 
         async def start_socket_when_ready():
-            await model_ready_event.wait()
+            await get_model_ready_event().wait()
             socket_server = await start_socket_server(generation_agent)
             await socket_server.serve_forever()
 
@@ -135,6 +137,12 @@ def _build_parser() -> argparse.ArgumentParser:
     set_p.add_argument("key")
     set_p.add_argument("value")
 
+    # profile
+    profile_p = sub.add_parser("profile", help="Manage user profile")
+    profile_sub = profile_p.add_subparsers(dest="profile_cmd")
+    profile_sub.add_parser("show", help="Show current profile")
+    profile_sub.add_parser("refresh", help="Regenerate profile")
+
     return parser
 
 
@@ -160,6 +168,17 @@ def main() -> None:
         case "config":
             from lyra.cli.config_cmd import run_config
             run_config(args)
+        case "profile":
+            import json
+            from lyra.util.profile import load_profile, refresh_profile
+            if args.profile_cmd == "refresh":
+                profile = refresh_profile()
+                print("Profile refreshed")
+                print(json.dumps(profile, indent=2))
+            elif args.profile_cmd == "show":
+                print(json.dumps(load_profile(), indent=2))
+            else:
+                parser.print_help()
         case None:
             _default()
         case _:

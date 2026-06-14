@@ -1,12 +1,17 @@
+import sys
 import shutil
 import subprocess
-import sys
+from lyra.util.profile import load_profile
 
 
 _KEYWORDS_MEMORY = {"ram", "memory", "memoria", "mem"}
 _KEYWORDS_DISK   = {"disk", "disco", "storage", "almacenamiento", "space", "espacio"}
 _KEYWORDS_CPU    = {"cpu", "processor", "procesador", "load", "carga", "core"}
 _KEYWORDS_PROCS  = {"process", "proceso", "top", "running", "corriendo"}
+_KEYWORDS_PACKAGES = {
+    "install", "instalar", "package", "paquete", "software",
+    "program", "programa", "app", "tool", "herramienta"
+}
 
 
 def build_system_ctx(query: str) -> str | None:
@@ -15,6 +20,18 @@ def build_system_ctx(query: str) -> str | None:
 
     q = query.lower()
     parts = []
+    profile = load_profile()
+
+    if profile.get("package_manager"):
+        parts.append(f"Package manager: {profile['package_manager']}")
+    if profile.get("distro"):
+        parts.append(f"Distro: {profile['distro']}")
+
+    from lyra.knowledge.resolver import resolve, format_for_prompt
+    resolved = resolve(query)
+    knowledge = format_for_prompt(resolved)
+    if knowledge:
+        parts.append(knowledge)
 
     if any(k in q for k in _KEYWORDS_MEMORY):
         m = memory_info()
@@ -22,21 +39,18 @@ def build_system_ctx(query: str) -> str | None:
             f"RAM: {m['used_mb']}MB used / {m['total_mb']}MB total "
             f"({m['percent']}%), {m['free_mb']}MB free"
         )
-
     if any(k in q for k in _KEYWORDS_DISK):
         d = disk_usage()
         parts.append(
             f"Disk (/): {d['used_gb']}GB used / {d['total_gb']}GB total "
             f"({d['percent']}%), {d['free_gb']}GB free"
         )
-
     if any(k in q for k in _KEYWORDS_CPU):
         c = cpu_info()
         parts.append(
             f"CPU: {c['cores']} cores, load avg {c['load_1m']} (1m) "
             f"{c['load_5m']} (5m) {c['load_15m']} (15m)"
         )
-
     if any(k in q for k in _KEYWORDS_PROCS):
         procs = top_processes(5)
         lines = "\n".join(
@@ -45,7 +59,7 @@ def build_system_ctx(query: str) -> str | None:
         )
         parts.append(f"Top processes:\n{lines}")
 
-    return "\n".join(parts) if parts else None
+    return "\n\n".join(parts) if parts else None
 
 
 def disk_usage(path: str = "/") -> dict:
@@ -108,3 +122,11 @@ def top_processes(limit: int = 5) -> list[dict]:
                 "command": parts[10][:60],
             })
     return rows
+
+
+def detect_package_manager() -> str | None:
+    managers = ["pacman", "apt", "dnf", "zypper", "emerge", "xbps-install", "apk"]
+    for mgr in managers:
+        if shutil.which(mgr):
+            return mgr
+    return None

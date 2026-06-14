@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lyra"]
+
+[project]
+name = "lyra-server"
+version = "0.1.0"
+description = "Lyra AI server"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+ "fastapi==0.115.4",
+ "uvicorn==0.32.0",
+ "pydantic==2.9.2",
+ "markdown==3.6",
+ "huggingface-hub==0.26.2",
+ "numpy>=2.0.0",
+ "regex==2024.9.11",
+ "tqdm==4.66.6",
+ "requests==2.32.3",
+ "chromadb>=0.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+ "python-dotenv==1.0.1",
+]
+
+[project.scripts]
+lyra = "lyra.cli.commands:main"
+lyra-install-backend = "lyra.scripts.install_backend:detect_and_install"
+

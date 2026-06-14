@@ -1,5 +1,51 @@
 import shutil
 import subprocess
+import sys
+
+
+_KEYWORDS_MEMORY = {"ram", "memory", "memoria", "mem"}
+_KEYWORDS_DISK   = {"disk", "disco", "storage", "almacenamiento", "space", "espacio"}
+_KEYWORDS_CPU    = {"cpu", "processor", "procesador", "load", "carga", "core"}
+_KEYWORDS_PROCS  = {"process", "proceso", "top", "running", "corriendo"}
+
+
+def build_system_ctx(query: str) -> str | None:
+    if sys.platform != "linux":
+        return None
+
+    q = query.lower()
+    parts = []
+
+    if any(k in q for k in _KEYWORDS_MEMORY):
+        m = memory_info()
+        parts.append(
+            f"RAM: {m['used_mb']}MB used / {m['total_mb']}MB total "
+            f"({m['percent']}%), {m['free_mb']}MB free"
+        )
+
+    if any(k in q for k in _KEYWORDS_DISK):
+        d = disk_usage()
+        parts.append(
+            f"Disk (/): {d['used_gb']}GB used / {d['total_gb']}GB total "
+            f"({d['percent']}%), {d['free_gb']}GB free"
+        )
+
+    if any(k in q for k in _KEYWORDS_CPU):
+        c = cpu_info()
+        parts.append(
+            f"CPU: {c['cores']} cores, load avg {c['load_1m']} (1m) "
+            f"{c['load_5m']} (5m) {c['load_15m']} (15m)"
+        )
+
+    if any(k in q for k in _KEYWORDS_PROCS):
+        procs = top_processes(5)
+        lines = "\n".join(
+            f"  {p['pid']} cpu={p['cpu_pct']}% mem={p['mem_pct']}% {p['command']}"
+            for p in procs
+        )
+        parts.append(f"Top processes:\n{lines}")
+
+    return "\n".join(parts) if parts else None
 
 
 def disk_usage(path: str = "/") -> dict:

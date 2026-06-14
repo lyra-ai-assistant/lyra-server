@@ -3,7 +3,7 @@ import time
 from threading import Lock
 from typing import Optional
 
-from db.connection import get_connection, init_db
+from lyra.db.connection import get_connection, init_db
 
 SESSION_TTL = 1800  # seconds of inactivity before a session expires
 

@@ -1,13 +1,12 @@
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 from pathlib import Path
 
 CHROMA_PATH = Path.home() / ".local" / "share" / "lyra" / "chroma"
 COLLECTION_NAME = "lyra_memory"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 TOP_K = 3
 
-_embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+_embedding_fn = ONNXMiniLM_L6_V2()  # mismo modelo, sin torch
 _client = chromadb.PersistentClient(path=str(CHROMA_PATH))
 _col = _client.get_or_create_collection(
     name=COLLECTION_NAME,

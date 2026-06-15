@@ -1,8 +1,9 @@
 from json import load
 from shutil import copy2
 from os import path, makedirs
+from importlib.resources import files
 
-TEMPLATE_FILE = "../templates/config.json"
+TEMPLATE_FILE = files("lyra.templates").joinpath("config.json")
 
 
 def load_config(config_path: str):

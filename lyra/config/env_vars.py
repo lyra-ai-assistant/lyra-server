@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from util.dirs import load_config
+from lyra.util.dirs import load_config
 
 CONFIG_PATH = "~/.config/lyra/config.json"
 config = load_config(CONFIG_PATH)

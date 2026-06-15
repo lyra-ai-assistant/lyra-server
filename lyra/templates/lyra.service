@@ -1,0 +1,12 @@
+# /usr/lib/systemd/user/lyra.service
+[Unit]
+Description=Lyra AI Server
+After=network.target
+
+[Service]
+ExecStart=lyra serve
+Restart=on-failure
+StandardOutput=journal
+
+[Install]
+WantedBy=default.target

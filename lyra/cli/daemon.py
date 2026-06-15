@@ -10,7 +10,6 @@ import asyncio
 import json
 import os
 import signal
-import socket
 import sys
 from pathlib import Path
 
@@ -55,7 +54,7 @@ def is_running() -> bool:
         _clear_pid()
         return False
     except PermissionError:
-        return True  # exists but owned by another user
+        return True
 
 
 def status() -> dict:
@@ -73,29 +72,23 @@ def status() -> dict:
 # ---------------------------------------------------------------------------
 
 def daemonize() -> None:
-    """
-    Double-fork to detach from the controlling terminal.
-    Redirects stdout/stderr to LOG_FILE.
-    """
+    """Double-fork to detach from the controlling terminal."""
     if is_running():
         print("lyra daemon is already running", file=sys.stderr)
         sys.exit(1)
 
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
-    # First fork
     pid = os.fork()
     if pid > 0:
         sys.exit(0)
 
     os.setsid()
 
-    # Second fork
     pid = os.fork()
     if pid > 0:
         sys.exit(0)
 
-    # Redirect stdio to log
     log_fd = open(LOG_FILE, "a")
     sys.stdout.flush()
     sys.stderr.flush()
@@ -137,19 +130,39 @@ def stop() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Unix socket server (for CLI client queries)
+# Unix socket server
 # ---------------------------------------------------------------------------
 
-async def _handle_socket_client(reader, writer, agent) -> None:
+async def _handle_socket_client(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    agent,
+) -> None:
     try:
         raw = await reader.read(4096)
         if not raw:
             return
         payload = json.loads(raw.decode())
         query = payload.get("query", "")
+
+        from lyra.knowledge.resolver import resolve, format_for_prompt
+        from lyra.util.profile import load_profile
+        from lyra.services.chat import _try_direct_answer
         from lyra.tools.linux import build_system_ctx
-        system_ctx = build_system_ctx(query)
-        response = agent.handle_request(query, system_ctx=system_ctx)
+
+        profile = load_profile()
+        pkg_mgr = profile.get("package_manager", "pacman")
+        resolved = resolve(query)
+
+        direct = _try_direct_answer(query, resolved, pkg_mgr)
+        if direct:
+            response = direct
+        else:
+            system_ctx = build_system_ctx(query)
+            knowledge_ctx = format_for_prompt(resolved)
+            combined = "\n\n".join(filter(None, [system_ctx, knowledge_ctx]))
+            response = agent.handle_request(query, system_ctx=combined or None)
+
         writer.write(response.encode())
         await writer.drain()
     except Exception as e:
@@ -161,7 +174,7 @@ async def _handle_socket_client(reader, writer, agent) -> None:
 
 
 async def start_socket_server(agent) -> asyncio.Server:
-    """Start the Unix socket server. Returns the server object."""
+    """Start the Unix socket server."""
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()

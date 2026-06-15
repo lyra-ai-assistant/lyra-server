@@ -64,6 +64,38 @@ def _serve(daemon: bool) -> None:
 
 
 # ---------------------------------------------------------------------------
+# uninstall
+# ---------------------------------------------------------------------------
+
+
+def _uninstall() -> None:
+    import shutil
+    from pathlib import Path
+
+    dirs = [
+        Path.home() / ".local" / "share" / "lyra",
+        Path.home() / ".config" / "lyra",
+    ]
+
+    print("This will remove:")
+    for d in dirs:
+        if d.exists():
+            print(f"  {d}")
+
+    confirm = input("Continue? [y/N] ").strip().lower()
+    if confirm != "y":
+        print("Aborted")
+        return
+
+    for d in dirs:
+        if d.exists():
+            shutil.rmtree(d)
+            print(f"Removed {d}")
+
+    print("Run 'uv tool uninstall lyra-server' to remove the package itself")
+
+
+# ---------------------------------------------------------------------------
 # stop / status
 # ---------------------------------------------------------------------------
 
@@ -121,6 +153,9 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_p = sub.add_parser("serve", help="Start the Lyra server")
     serve_p.add_argument("--daemon", action="store_true", help="Run as background daemon")
 
+    # uninstall
+    sub.add_parser("uninstall", help="Remove all Lyra data and models")
+
     # stop
     sub.add_parser("stop", help="Stop the daemon")
 
@@ -161,6 +196,8 @@ def main() -> None:
     match args.command:
         case "serve":
             _serve(daemon=args.daemon)
+        case "uninstall":
+            _uninstall()
         case "stop":
             _stop()
         case "status":

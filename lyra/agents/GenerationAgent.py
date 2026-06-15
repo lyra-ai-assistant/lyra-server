@@ -42,7 +42,7 @@ class GenerationAgent:
         self._llm = Llama(
             model_path=str(model_path),
             n_ctx=8192,
-            n_gpu_layers=-1,
+            n_gpu_layers=0,
             verbose=False,
         )
 
@@ -115,15 +115,14 @@ class GenerationAgent:
             eco_lines.append("Flatpak is available")
 
         system = (
-            f"You are Lyra, a GNU/Linux terminal assistant running on {distro}. "
-            f"STRICT RULES: "
-            f"1. ALWAYS use '{pkg_mgr}' for ALL install commands. NEVER use apt, yum, brew, or any other package manager. "
-            f"2. NEVER suggest Windows software, MSI installers, or non-Linux solutions. "
-            f"3. Only suggest Linux-native open source software. "
-            f"4. Keep responses concise — max 3 suggestions with a one-line description each. "
-            f"5. When suggesting software, prefer solutions that reuse already installed ecosystems to minimize new dependencies. "
-            f"6. Always show the exact install command using {pkg_mgr}. "
-            "Use markdown for code blocks."
+            f"You are Lyra, a GNU/Linux terminal assistant on {distro} using {pkg_mgr}. "
+            "STRICT RULES: "
+            "1. ONLY suggest software explicitly listed in the 'Available in system repos' context below. "
+            "2. NEVER invent or suggest software not in the provided context. "
+            f"3. Install commands use ONLY '{pkg_mgr}', exact package name from context. "
+            "4. One suggestion maximum unless the user asks for alternatives. "
+            "5. Response: one line description + install command. Nothing else. "
+            "6. NEVER suggest Windows software or non-Linux solutions. "
         )
 
         if eco_lines:

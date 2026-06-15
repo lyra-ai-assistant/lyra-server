@@ -15,6 +15,7 @@ MODEL_REPO = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
 MODEL_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 
 
+
 def _get_installer() -> list[str]:
     LYRA_VENV.mkdir(parents=True, exist_ok=True)
 

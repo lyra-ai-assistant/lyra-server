@@ -1,17 +1,11 @@
-import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-from pathlib import Path
+from memory.chroma import client, embedding_fn
 
-CHROMA_PATH = Path.home() / ".local" / "share" / "lyra" / "chroma"
 COLLECTION_NAME = "lyra_memory"
-EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 TOP_K = 3
 
-_embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
-_client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-_col = _client.get_or_create_collection(
+_col = client.get_or_create_collection(
     name=COLLECTION_NAME,
-    embedding_function=_embedding_fn,
+    embedding_function=embedding_fn,
 )
 
 

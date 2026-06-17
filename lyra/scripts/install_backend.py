@@ -50,6 +50,32 @@ def _has_amd_vulkan() -> bool:
         return False
 
 
+def _has_amd_discrete_gpu() -> bool:
+    """Devuelve True solo si hay una GPU AMD discreta (no integrada Vega 6/8)."""
+    # PIDs de GPUs integradas AMD Ryzen conocidas por crashear con Vulkan
+    INTEGRATED_PIDS = {
+        "15d8",  # Vega 8 (Ryzen 3000)
+        "15dd",  # Vega 8 (Ryzen 2000)
+        "15d9",  # Vega 10
+        "164c",  # Vega 6 (Ryzen 4000)
+        "1636",  # Vega 7 (Ryzen 5000)
+        "15bf",  # Vega 8 (Ryzen 7000)
+    }
+    try:
+        result = subprocess.run(
+            ["vulkaninfo", "--summary"],
+            capture_output=True,
+            text=True,
+        )
+        output = result.stdout.lower()
+        for pid in INTEGRATED_PIDS:
+            if pid in output:
+                return False
+        return "amd" in output or "radv" in output
+    except Exception:
+        return False
+
+
 def _compile_and_install() -> None:
     if shutil.which("nvidia-smi"):
         print("NVIDIA GPU detected")
@@ -58,8 +84,12 @@ def _compile_and_install() -> None:
         print("AMD ROCm GPU detected")
         cmake_args = "-DGGML_HIPBLAS=on"
     elif shutil.which("vulkaninfo") and _has_amd_vulkan():
-        print("AMD GPU with Vulkan detected")
-        cmake_args = "-DGGML_VULKAN=on"
+        if _has_amd_discrete_gpu():
+            print("AMD discrete GPU with Vulkan detected")
+            cmake_args = "-DGGML_VULKAN=on"
+        else:
+            print("AMD integrated GPU detected (Vega), Vulkan unstable — using CPU")
+            cmake_args = None
     elif shutil.which("sycl-ls") or shutil.which("icpx"):
         print("Intel GPU detected")
         cmake_args = "-DGGML_SYCL=on"

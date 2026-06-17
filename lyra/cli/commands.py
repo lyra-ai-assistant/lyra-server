@@ -31,6 +31,9 @@ VERSION = "0.1.0"
 # ---------------------------------------------------------------------------
 
 def _serve(daemon: bool) -> None:
+    import os
+    os.environ["GGML_VK_DISABLE"] = "1"
+
     from lyra.cli.daemon import daemonize, start_socket_server
     from lyra.api.dependencies import generation_agent
     from lyra.main import app, get_model_ready_event
@@ -52,8 +55,15 @@ def _serve(daemon: bool) -> None:
 
         async def start_socket_when_ready():
             await get_model_ready_event().wait()
-            socket_server = await start_socket_server(generation_agent)
-            await socket_server.serve_forever()
+            print("[DEBUG] model ready, creating socket...", flush=True)
+            try:
+                socket_server = await start_socket_server(generation_agent)
+                print("[DEBUG] socket created OK", flush=True)
+                await socket_server.serve_forever()
+            except Exception as e:
+                import traceback
+                print(f"[DEBUG] socket error: {e}", flush=True)
+                traceback.print_exc()
 
         await asyncio.gather(
             server.serve(),

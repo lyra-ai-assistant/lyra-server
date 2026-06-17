@@ -77,6 +77,7 @@ def daemonize() -> None:
         print("lyra daemon is already running", file=sys.stderr)
         sys.exit(1)
 
+    os.environ["GGML_VK_DISABLE"] = "1"
     RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
 
     pid = os.fork()

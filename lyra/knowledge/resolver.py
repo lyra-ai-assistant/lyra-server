@@ -54,6 +54,29 @@ def _is_dev_query(query: str) -> bool:
     return any(k in q for k in _DEV_KEYWORDS)
 
 
+def _expand_search_terms(query: str) -> list[str]:
+    """Use SLM to extract search terms from user's query."""
+    try:
+        from lyra.api.dependencies import generation_agent
+        result = generation_agent._llm.create_chat_completion(
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Extract 2-3 short English search terms for finding Linux software "
+                    f"that answers this query: '{query}'\n"
+                    f"Reply with ONLY the terms separated by commas. No explanations."
+                )
+            }],
+            max_tokens=20,
+            temperature=0.1,
+        )
+        raw = result["choices"][0]["message"]["content"]
+        terms = [t.strip().lower() for t in raw.split(",") if t.strip()]
+        return terms[:3]
+    except Exception:
+        return _extract_keywords(query)
+
+
 # ---------------------------------------------------------------------------
 # Parallel execution
 # ---------------------------------------------------------------------------
@@ -149,7 +172,7 @@ def _search_wiki(query: str, distro: str | None) -> str | None:
 # Public API
 # ---------------------------------------------------------------------------
 
-def resolve(query: str) -> dict:
+def resolve(query: str, search_terms: list[str] | None = None) -> dict:
     """
     Resolve a user query into curated package and wiki knowledge.
 
@@ -169,8 +192,10 @@ def resolve(query: str) -> dict:
     pkg_mgr = profile.get("package_manager")
     distro = profile.get("distro")
 
-    keywords = _extract_keywords(query)
-    search_terms = keywords if keywords else [query]
+    if search_terms is None:
+        search_terms = _extract_keywords(query)
+        if not search_terms:
+            search_terms = [query]
     is_dev = _is_dev_query(query)
 
     tasks: dict = {}

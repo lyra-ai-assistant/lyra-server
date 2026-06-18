@@ -65,12 +65,14 @@ def _serve(daemon: bool) -> None:
                 print(f"[DEBUG] socket error: {e}", flush=True)
                 traceback.print_exc()
 
-        await asyncio.gather(
-            server.serve(),
-            start_socket_when_ready(),
-        )
-
-    asyncio.run(_run())
+        try:
+            await asyncio.gather(
+                server.serve(),
+                start_socket_when_ready(),
+            )
+        except SystemExit as e:
+            print(f"[lyra] uvicorn failed to start (port {env_vars.api_port} in use?)", flush=True)
+            raise
 
 
 # ---------------------------------------------------------------------------

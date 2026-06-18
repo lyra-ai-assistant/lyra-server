@@ -153,7 +153,22 @@ async def _handle_socket_client(
 
         profile = load_profile()
         pkg_mgr = profile.get("package_manager", "pacman")
-        resolved = resolve(query)
+
+        raw_terms = agent._llm.create_chat_completion(
+            messages=[{"role": "user", "content": (
+                f"Extract 2-3 short English search terms for finding Linux software "
+                f"that answers: '{query}'\n"
+                f"Reply with ONLY terms separated by commas. No explanations."
+            )}],
+            max_tokens=20,
+            temperature=0.1,
+        )
+        terms_text = raw_terms["choices"][0]["message"]["content"]
+        import re
+        search_terms = [t.strip().lower() for t in re.split(r'[,\n]', terms_text) if t.strip()][:3]
+        print(f"[DEBUG] search_terms: {search_terms}", flush=True)
+
+        resolved = resolve(query, search_terms=search_terms)
 
         direct = _try_direct_answer(query, resolved, pkg_mgr)
         if direct:
@@ -161,8 +176,11 @@ async def _handle_socket_client(
         else:
             system_ctx = build_system_ctx(query)
             knowledge_ctx = format_for_prompt(resolved)
-            combined = "\n\n".join(filter(None, [system_ctx, knowledge_ctx]))
-            response = agent.handle_request(query, system_ctx=combined or None)
+            response = agent.handle_request(
+                query,
+                system_ctx=knowledge_ctx or None,
+                semantic_ctx=[system_ctx] if system_ctx else None,
+            )
 
         writer.write(response.encode())
         await writer.drain()

@@ -17,7 +17,6 @@ def get_model_ready_event() -> asyncio.Event:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Solo inicializar el modelo, sin inferencia de prueba
     deps._model_ready = True
     get_model_ready_event().set()
     print("Lyra server up", flush=True)

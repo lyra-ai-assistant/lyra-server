@@ -31,9 +31,7 @@ VERSION = "0.1.0"
 # ---------------------------------------------------------------------------
 
 def _serve(daemon: bool) -> None:
-    import os
-    os.environ["GGML_VK_DISABLE"] = "1"
-
+    import socket as _socket
     from lyra.cli.daemon import daemonize, start_socket_server
     from lyra.api.dependencies import generation_agent
     from lyra.main import app, get_model_ready_event
@@ -51,28 +49,28 @@ def _serve(daemon: bool) -> None:
             loop="none",
             log_level="warning",
         )
+
+        sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+        sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+        sock.bind((env_vars.host, env_vars.api_port))
+        sock.listen(5)
+
         server = uvicorn.Server(config)
+
+        import lyra.cli.daemon as _daemon
+        _daemon._uvicorn_server = server
 
         async def start_socket_when_ready():
             await get_model_ready_event().wait()
-            print("[DEBUG] model ready, creating socket...", flush=True)
-            try:
-                socket_server = await start_socket_server(generation_agent)
-                print("[DEBUG] socket created OK", flush=True)
-                await socket_server.serve_forever()
-            except Exception as e:
-                import traceback
-                print(f"[DEBUG] socket error: {e}", flush=True)
-                traceback.print_exc()
+            socket_server = await start_socket_server(generation_agent)
+            await socket_server.serve_forever()
 
-        try:
-            await asyncio.gather(
-                server.serve(),
-                start_socket_when_ready(),
-            )
-        except SystemExit as e:
-            print(f"[lyra] uvicorn failed to start (port {env_vars.api_port} in use?)", flush=True)
-            raise
+        await asyncio.gather(
+            server.serve(sockets=[sock]),
+            start_socket_when_ready(),
+        )
+
+    asyncio.run(_run())
 
 
 # ---------------------------------------------------------------------------

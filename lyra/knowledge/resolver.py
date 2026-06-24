@@ -107,11 +107,12 @@ def _is_user_package(pkg: dict) -> bool:
     if any(name.endswith(s) for s in _LIB_SUFFIXES):
         return False
 
-    # "lib" solo como prefijo seguido de guión (libxml-, libgtk-) no "libreoffice"
-    if name.startswith("lib") and "-" in name and name.index("lib") == 0:
-        after_lib = name[3:]
-        if after_lib and after_lib[0] != "r":  # excluir "libre*"
-            return False
+    if (
+        name.startswith("lib")
+        and "-" in name
+        and not name.startswith("libre")
+    ):
+        return False
 
     if any(phrase in desc for phrase in _SKIP_DESC_WORDS):
         return False
@@ -196,17 +197,16 @@ def resolve(query: str, search_terms: list[str] | None = None) -> dict:
         search_terms = _extract_keywords(query)
         if not search_terms:
             search_terms = [query]
+
     is_dev = _is_dev_query(query)
 
     tasks: dict = {}
 
-    # System package manager
     if pkg_mgr == "pacman":
         tasks["system"] = lambda: _search_pacman_multi(search_terms)
     elif pkg_mgr == "apt":
         tasks["system"] = lambda: _search_apt_multi(search_terms)
 
-    # Ecosystem registries — only for dev queries
     if is_dev:
         first_term = search_terms[0] if search_terms else query
         if "python" in ecosystems:
@@ -216,7 +216,6 @@ def resolve(query: str, search_terms: list[str] | None = None) -> dict:
         if "node" in ecosystems:
             tasks["npm"] = lambda: _search_npm(first_term)
 
-    # Wiki — always attempted
     tasks["wiki"] = lambda: _search_wiki(query, distro)
 
     results = _run_parallel(tasks)

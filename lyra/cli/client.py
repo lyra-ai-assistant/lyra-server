@@ -2,18 +2,17 @@
 CLI client: connects to the daemon via Unix socket to run a query.
 If the daemon is not running, starts it first then retries.
 """
-
 import json
 import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
-
 from lyra.cli.daemon import SOCKET_PATH, is_running
 
-_CONNECT_TIMEOUT = 10   # seconds to wait for daemon to be ready
+_CONNECT_TIMEOUT = 10
 _RECV_BUFFER = 65536
+_session_id: str | None = None
 
 
 def _connect() -> socket.socket:
@@ -37,7 +36,6 @@ def _wait_for_daemon(timeout: int = _CONNECT_TIMEOUT) -> bool:
 
 
 def _start_daemon() -> None:
-    """Spawn daemon as a background process."""
     subprocess.Popen(
         ["lyra", "serve", "--daemon"],
         stdout=subprocess.DEVNULL,
@@ -47,10 +45,8 @@ def _start_daemon() -> None:
 
 
 def query(text: str) -> str:
-    """
-    Send a query to the daemon and return the plain-text response.
-    Starts the daemon if it is not already running.
-    """
+    global _session_id
+
     if not is_running():
         print("Starting lyra daemon...", file=sys.stderr)
         _start_daemon()
@@ -64,7 +60,7 @@ def query(text: str) -> str:
         print("ERROR: could not connect to lyra daemon", file=sys.stderr)
         sys.exit(1)
 
-    payload = json.dumps({"query": text}).encode()
+    payload = json.dumps({"query": text, "session_id": _session_id}).encode()
     sock.sendall(payload)
     sock.shutdown(socket.SHUT_WR)
 
@@ -76,4 +72,11 @@ def query(text: str) -> str:
         chunks.append(chunk)
     sock.close()
 
-    return b"".join(chunks).decode()
+    raw = b"".join(chunks).decode()
+    try:
+        parsed = json.loads(raw)
+        if parsed.get("session_id"):
+            _session_id = parsed["session_id"]
+        return parsed["response"]
+    except (json.JSONDecodeError, KeyError):
+        return raw

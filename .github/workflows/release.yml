@@ -1,24 +1,47 @@
 name: Release
 
 on:
-push:
-tags:
-- 'v*'
+  pull_request:
+    types: [closed]
+    branches: [main]
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    if: |
+      github.event.pull_request.merged == true &&
+      contains(github.event.pull_request.labels.*.name, 'release')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-steps:
-  - uses: actions/checkout@v4
+      - name: Get version from pyproject.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version' pyproject.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+          echo "value=v$VERSION" >> $GITHUB_OUTPUT
 
-  - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v3
 
-  - run: uv build
+      - run: uv build
 
-  - uses: softprops/action-gh-release@v2
-    with:
-      files: |
-        dist/*.whl
-        dist/*.tar.gz
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.value }}
+          git push origin ${{ steps.version.outputs.value }}
 
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+
+      - name: Notify lyra-packaging
+        run: |
+          gh api repos/lyra-ai-assistant/lyra-packaging/dispatches \
+            --method POST \
+            --field event_type=lyra-server-release
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGING_DISPATCH_TOKEN }}

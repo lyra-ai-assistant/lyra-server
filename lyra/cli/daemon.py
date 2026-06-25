@@ -18,6 +18,8 @@ PID_FILE = RUNTIME_DIR / "lyra.pid"
 SOCKET_PATH = RUNTIME_DIR / "lyra.sock"
 LOG_FILE = RUNTIME_DIR / "lyra.log"
 
+_uvicorn_server = None
+
 
 # ---------------------------------------------------------------------------
 # PID helpers
@@ -108,6 +110,10 @@ def _handle_sigterm(signum, frame) -> None:
     _clear_pid()
     if SOCKET_PATH.exists():
         SOCKET_PATH.unlink()
+
+    if _uvicorn_server is not None:
+        _uvicorn_server.should_exit = True
+
     signal.signal(signum, signal.SIG_DFL)
     os.kill(os.getpid(), signum)
 
@@ -145,28 +151,45 @@ async def _handle_socket_client(
             return
         payload = json.loads(raw.decode())
         query = payload.get("query", "")
+        session_id = payload.get("session_id")
 
         from lyra.knowledge.resolver import resolve, format_for_prompt
         from lyra.util.profile import load_profile
         from lyra.services.chat import _try_direct_answer
         from lyra.tools.linux import build_system_ctx
+        from lyra.context.manager import session_manager  # nuevo
 
         profile = load_profile()
         pkg_mgr = profile.get("package_manager", "pacman")
 
+        session_id, history = session_manager.get_or_create(session_id)
+
+        history_text = ""
+        if history:
+            recent = history[-6:]
+            history_text = "\n".join(
+                f"{m['role'].upper()}: {m['content']}" for m in recent
+            )
+
+        import re
+        extraction_prompt = (
+            f"Extract 2-3 short English search terms for finding Linux software "
+            f"that answers the LAST user message, considering the conversation context.\n"
+        )
+        if history_text:
+            extraction_prompt += f"Conversation so far:\n{history_text}\n\n"
+        extraction_prompt += (
+            f"Last message: '{query}'\n"
+            f"Reply with ONLY terms separated by commas. No explanations."
+        )
+
         raw_terms = agent._llm.create_chat_completion(
-            messages=[{"role": "user", "content": (
-                f"Extract 2-3 short English search terms for finding Linux software "
-                f"that answers: '{query}'\n"
-                f"Reply with ONLY terms separated by commas. No explanations."
-            )}],
+            messages=[{"role": "user", "content": extraction_prompt}],
             max_tokens=20,
             temperature=0.1,
         )
         terms_text = raw_terms["choices"][0]["message"]["content"]
-        import re
         search_terms = [t.strip().lower() for t in re.split(r'[,\n]', terms_text) if t.strip()][:3]
-        print(f"[DEBUG] search_terms: {search_terms}", flush=True)
 
         resolved = resolve(query, search_terms=search_terms)
 
@@ -178,14 +201,18 @@ async def _handle_socket_client(
             knowledge_ctx = format_for_prompt(resolved)
             response = agent.handle_request(
                 query,
+                history=history,
                 system_ctx=knowledge_ctx or None,
                 semantic_ctx=[system_ctx] if system_ctx else None,
             )
 
-        writer.write(response.encode())
+        session_manager.add_messages(session_id, query, response)
+
+        result = json.dumps({"response": response, "session_id": session_id})
+        writer.write(result.encode())
         await writer.drain()
     except Exception as e:
-        writer.write(f"ERROR: {e}".encode())
+        writer.write(json.dumps({"response": f"ERROR: {e}", "session_id": None}).encode())
         await writer.drain()
     finally:
         writer.close()

@@ -1,137 +1,144 @@
-# Server
+# Lyra Server
 
-Lyra's backend server for local Small Language Models (SLMs). Built with FastAPI and HuggingFace Transformers. Runs entirely on-device — no internet connection or external services required.
+Backend daemon for Lyra — an open source AI assistant for GNU/Linux.
 
-## Architecture
+Exposes two simultaneous interfaces:
+- **Unix socket** — used by the CLI and Electron UI, stateful via `session_id`
+- **HTTP API on :4000** — REST with SSE streaming for external integrations
 
-The server uses a three-agent dispatch pipeline for general requests, plus a dedicated stateful chat endpoint with persistent memory:
+## Development
 
-```text
-POST /              DispatcherAgent → AnalysisAgent (sentiment)
-                                   → GenerationAgent (TinyLlama-1.1B)
+### Requirements
 
-POST /chat          SessionManager (SQLite) + SemanticMemory (ChromaDB)
-                    → GenerationAgent with conversation history
+- Python 3.13+
+- [`uv`](https://github.com/astral-sh/uv)
+- GNU/Linux x86_64
 
-POST /chat/stream   Same as /chat but streams tokens via SSE
-
-GET  /health        Live system metrics (RAM, disk, CPU, active sessions)
-```
-
-**Persistent storage** lives at `~/.local/share/lyra/`:
-
-| Path | Contents |
-| --- | --- |
-| `lyra.db` | SQLite — sessions and full message history |
-| `chroma/` | ChromaDB — semantic embeddings (`all-MiniLM-L6-v2`) |
-
-## Setup
-
-Replace `[STAGE]` with `dev` or `build`.
-
-### GNU/Linux
+### Installation
 
 ```bash
-python -m venv env
-source env/bin/activate
-pip install -r [STAGE]-requirements.txt
+git clone https://github.com/lyra-ai-assistant/lyra-server
+cd lyra-server
+uv tool install . --force
+lyra-install-backend
 ```
 
-### Windows
-
-```bash
-python -m venv env
-.\env\Scripts\activate
-pip install -r [STAGE]-requirements.txt
-```
+> `uv tool install . --force` must be run after every change to `lyra-server`.
+> `lyra-install-backend` only needs to run once — it detects your GPU and downloads the AI model.
 
 ## Configuration
 
-Before starting, make sure `~/.config/lyra/config.json` exists. If it doesn't, copy the template:
-
-```bash
-cp templates/config.json ~/.config/lyra/config.json
-```
-
-Edit it to match your setup:
+The server reads configuration from `~/.config/lyra/config.json`.  
+**This file is created automatically** when you run `lyra-install-backend`, with these defaults:
 
 ```json
 {
-  "nodeEnv": "development",
-  "host": "http://localhost",
+  "host": "127.0.0.1",
   "apiPort": 4000,
   "mode": "dev",
-  "verbose": "0"
+  "verbose": "0",
+  "nodeEnv": "development"
 }
 ```
 
-Then start the server:
+| Key | Description |
+|-----|-------------|
+| `host` | Bind address |
+| `apiPort` | HTTP API port |
+| `mode` | `"dev"` or `"prod"` |
+| `verbose` | `"0"` = minimal logging, `"1"` = debug logging |
+| `nodeEnv` | Used by the UI, not by `lyra-server` |
+
+To modify settings, edit this file or use the CLI:
 
 ```bash
-uvicorn main:app --reload
+lyra config get host
+lyra config set apiPort 5000
+lyra config list
 ```
 
-The first run will download two models:
+### Usage
 
-- **TinyLlama/TinyLlama-1.1B-Chat-v1.0** (~2.2 GB) — text generation
-- **all-MiniLM-L6-v2** (~80 MB) — semantic embeddings
-
-## API
-
-### `POST /`
-
-Routes text through the dispatcher pipeline. Use for one-off requests.
-
-```json
-{ "text": "Analyze this: I love Linux", "context": null }
+```bash
+lyra serve              # foreground
+lyra serve --daemon     # background
+lyra stop
+lyra status
+lyra -q "how do I install neovim"
 ```
 
-Response: `{ "response": "..." }`
+### CLI reference
 
-### `POST /chat`
+| Command | Description |
+|---------|-------------|
+| `lyra serve` | Start the daemon in foreground |
+| `lyra serve --daemon` | Start the daemon in background |
+| `lyra stop` | Send SIGTERM to the daemon |
+| `lyra status` | Show PID and socket path |
+| `lyra -q "<text>"` | Send a query and print the response |
+| `lyra config get <key>` | Get a config value |
+| `lyra config set <key> <value>` | Set a config value |
+| `lyra config list` | List all config values |
+| `lyra profile show` | Show the current system profile |
+| `lyra profile refresh` | Re-detect ecosystems and update profile |
+| `lyra uninstall` | Remove all Lyra data and config |
+| `lyra --version` | Show version |
+| `lyra-install-backend` | Detect GPU, install llama-cpp-python, download model |
 
-Stateful multi-turn conversation. Returns HTML-formatted text (markdown converted).
+## Architecture
 
-```json
-{ "text": "How do I check disk usage?", "session_id": null }
+### File system
+
+```
+lyra-server
+├── agents/         # LLM wrapper (llama-cpp-python)
+├── api/            # FastAPI routers: /chat, /chat/stream, /health
+├── cli/            # CLI entry point, daemon, Unix socket server
+├── config/         # Environment variables
+├── context/        # Session manager (SQLite WAL)
+├── db/             # SQLite connection and schema
+├── knowledge/      # Package resolvers: pacman, apt, PyPI, npm, crates.io, wiki
+├── memory/         # Semantic memory (ChromaDB + ONNXMiniLM)
+├── scripts/        # Backend installer
+├── services/       # Chat handler, direct answer logic
+├── templates/      # Default config
+├── tools/          # System info: disk, memory, CPU, ecosystems, packages
+└── util/           # Shared utilities: formatting, token budget, context window
 ```
 
-Response:
+### Runtime files
 
-```json
-{ "response": "<p>Use <code>df -h</code>...</p>", "session_id": "uuid-here" }
+| Path | Description |
+|------|-------------|
+| `~/.config/lyra/config.json` | Host, port, mode, verbosity |
+| `~/.config/lyra/profile.json` | Auto-detected system profile |
+| `~/.local/share/lyra/models/` | GGUF model file |
+| `~/.local/share/lyra/chroma/` | Persistent semantic memory |
+| `~/.local/share/lyra/lyra.db` | Session and message history |
+| `~/.local/share/lyra/lyra.sock` | Unix socket |
+| `~/.local/share/lyra/lyra.log` | Daemon log |
+
+### HTTP API
+
+```
+POST /chat
+POST /chat/stream   # SSE streaming
+DELETE /chat/{session_id}
+GET  /health
 ```
 
-Pass the returned `session_id` in every subsequent message to continue the conversation. Sessions expire after **30 minutes** of inactivity.
+### Stack
 
-### `POST /chat/stream`
+| Component | Technology |
+|-----------|------------|
+| Runtime | Python 3.13, uv |
+| HTTP API | FastAPI + uvicorn |
+| Inference | llama-cpp-python |
+| Model | Qwen2.5-1.5B Instruct Q4_K_M (GGUF) |
+| Embeddings | ONNXMiniLM L6 V2 via ChromaDB |
+| Semantic memory | ChromaDB PersistentClient |
+| Session history | SQLite WAL |
 
-Same as `/chat` but streams tokens as Server-Sent Events. Ideal for the frontend to display responses token-by-token.
+## License
 
-```text
-data: {"session_id": "uuid-here"}
-data: {"token": "Use"}
-data: {"token": " df"}
-data: {"token": " -h"}
-...
-data: [DONE]
-```
-
-### `DELETE /chat/{session_id}`
-
-Clears a session and its history from the database.
-
-### `GET /health`
-
-Returns server status and live system metrics.
-
-```json
-{
-  "status": "ok",
-  "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-  "active_sessions": 2,
-  "memory": { "total_mb": 15987.3, "used_mb": 8241.1, "free_mb": 7746.2, "percent": 51.5 },
-  "disk":   { "total_gb": 512.0,   "used_gb": 210.4,  "free_gb": 301.6,  "percent": 41.1 },
-  "cpu":    { "cores": 8, "load_1m": 0.42, "load_5m": 0.38, "load_15m": 0.31 }
-}
-```
+(AGPL-3.0)[http://github.com/lyra-ai-assistant/lyra-server?tab=AGPL-3.0-1-ov-file]

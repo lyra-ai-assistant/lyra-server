@@ -1,6 +1,8 @@
 import sys
+import lyra.api.dependencies as deps
+
 from fastapi import APIRouter
-from lyra.api.dependencies import _model_ready
+from lyra.agents.constants import MODEL_FILE
 from lyra.context.manager import session_manager
 from lyra.tools.linux import disk_usage, memory_info, cpu_info
 
@@ -12,8 +14,8 @@ async def health():
     is_linux = sys.platform == "linux"
     return {
         "status": "ok",
-        "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-        "model_ready": _model_ready,
+        "model": MODEL_FILE,
+        "model_ready": deps._model_ready,
         "active_sessions": session_manager.active_count(),
         "disk": disk_usage(),
         "memory": memory_info() if is_linux else None,
